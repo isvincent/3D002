@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>貝尼尼《普魯托強擄普洛塞庇娜》— 3D 巴洛克雕塑數位鑑賞體驗</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Cinzel, Noto Serif TC, Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Inter:wght@300;400;500;600&family=Noto+Serif+TC:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <!-- Three.js & OrbitControls & Tween -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        serif: ['"Noto Serif TC"', 'serif'],
+                        cinzel: ['"Cinzel"', 'serif'],
+                        sans: ['"Inter"', 'sans-serif'],
+                    },
+                    colors: {
+                        museum: {
+                            bg: '#0c0b0e',
+                            card: 'rgba(20, 19, 24, 0.84)',
+                            border: 'rgba(212, 175, 55, 0.28)',
+                            gold: '#d4af37',
+                            goldLight: '#f3e5ab',
+                            marble: '#f5f2eb',
+                            muted: '#9e9a90'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0c0b0e;
+            color: #f5f2eb;
+            font-family: 'Inter', 'Noto Serif TC', sans-serif;
+        }
+        #canvas-container {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background: radial-gradient(circle at 50% 35%, #231e24 0%, #100e12 60%, #070608 100%);
+        }
+        /* 玻璃擬態面板 */
+        .museum-panel {
+            background: rgba(18, 17, 22, 0.82);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(212, 175, 55, 0.26);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+        .gold-gradient-text {
+            background: linear-gradient(135deg, #f9eebc 0%, #d4af37 50%, #aa8010 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        /* 3D 空間中的 2D 熱點標記 */
+        .hotspot-marker {
+            position: absolute;
+            width: 34px;
+            height: 34px;
+            margin-left: -17px;
+            margin-top: -17px;
+            border-radius: 9999px;
+            background: rgba(15, 14, 18, 0.9);
+            border: 1.5px solid #d4af37;
+            color: #f3e5ab;
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 20;
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s, box-shadow 0.25s;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.45);
+            pointer-events: auto;
+        }
+        .hotspot-marker::after {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            border-radius: 9999px;
+            border: 1px solid rgba(212, 175, 55, 0.55);
+            animation: pulse-ring 2.4s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+        }
+        .hotspot-marker:hover, .hotspot-marker.active {
+            transform: scale(1.26);
+            background: #d4af37;
+            color: #0c0b0e;
+            box-shadow: 0 0 25px rgba(243, 229, 171, 0.9);
+        }
+        .hotspot-tooltip {
+            position: absolute;
+            left: 42px;
+            white-space: nowrap;
+            background: rgba(14, 13, 18, 0.92);
+            border: 1px solid rgba(212, 175, 55, 0.45);
+            color: #f5f2eb;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-family: 'Noto Serif TC', serif;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateX(-6px);
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+        }
+        .hotspot-marker:hover .hotspot-tooltip,
+        .hotspot-marker.active .hotspot-tooltip {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.85); opacity: 0.9; }
+            80%, 100% { transform: scale(1.45); opacity: 0; }
+        }
+        /* 自訂滑桿樣式 */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.14);
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #d4af37;
+            border: 2px solid #fff8dc;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(212, 175, 55, 0.8);
+            transition: transform 0.15s ease;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        /* 自訂捲軸 */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(212, 175, 55, 0.4);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(212, 175, 55, 0.7);
+        }
+    </style>
+</head>
+<body class="relative select-none">
+
+    <!-- 3D WebGL 畫布容器 -->
+    <div id="canvas-container"></div>
+
+    <!-- 3D 浮動熱點容器 (由 JS 動態同步座標) -->
+    <div id="hotspots-layer" class="absolute inset-0 pointer-events-none z-20 overflow-hidden"></div>
+
+    <!-- 頂部博物館導覽列 -->
+    <header class="fixed top-0 left-0 right-0 z-30 px-4 py-3 md:px-7 md:py-4 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
+        <div class="flex items-center gap-3.5 pointer-events-auto">
+            <div class="w-10 h-10 rounded-full border border-museum-gold/60 bg-black/60 flex items-center justify-center shadow-lg">
+                <span class="font-cinzel text-museum-gold font-bold text-lg tracking-wider">B</span>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-cinzel uppercase tracking-[0.25em] text-museum-gold">Galleria Borghese · Roma</span>
+                    <span class="px-2 py-0.5 text-[10px] rounded-full bg-museum-gold/15 border border-museum-gold/40 text-museum-goldLight">1621–1622</span>
+                </div>
+                <h1 class="text-lg md:text-2xl font-serif font-bold tracking-wide text-museum-marble">
+                    普魯托強擄普洛塞庇娜 <span class="hidden sm:inline text-xs md:text-sm font-cinzel font-normal text-museum-muted ml-1">The Rape of Proserpina</span>
+                </h1>
+            </div>
+        </div>
+
+        <!-- 頂部輔助開關 -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <button id="toggle-hotspots-btn" class="museum-panel px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5 text-museum-goldLight hover:border-museum-gold transition">
+                <span class="w-2 h-2 rounded-full bg-museum-gold animate-ping"></span>
+                <span>導覽標記：顯示</span>
+            </button>
+            <button id="toggle-diagram-btn" class="museum-panel px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5 text-museum-marble/90 hover:border-museum-gold transition">
+                <svg class="w-3.5 h-3.5 text-museum-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <span>螺旋張力線</span>
+            </button>
+            <button id="toggle-ui-btn" class="museum-panel px-3 py-1.5 rounded-full text-xs text-museum-muted hover:text-white transition" title="隱藏或展開兩側面板">
+                沉浸檢視
+            </button>
+        </div>
+    </header>
+
+    <!-- 左側：典藏資訊卡 & 5 大導覽熱點詳情面板 -->
+    <aside id="left-panel" class="fixed top-20 left-4 bottom-24 w-80 md:w-96 z-30 flex flex-col gap-3 pointer-events-none transition-all duration-300">
+        <!-- 典藏檔案摘要卡 -->
+        <div class="museum-panel rounded-2xl p-4 pointer-events-auto">
+            <div class="flex items-center justify-between border-b border-white/10 pb-2.5 mb-3">
+                <div>
+                    <p class="text-[11px] uppercase tracking-widest text-museum-gold font-cinzel">Masterpiece Archive</p>
+                    <h2 class="text-sm font-serif font-bold text-white">濟安·勞倫佐·貝尼尼 (Gian Lorenzo Bernini)</h2>
+                </div>
+                <span class="text-xs font-cinzel text-museum-goldLight bg-white/5 px-2.5 py-1 rounded-md border border-white/10">年僅 23 歲之作</span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 text-xs mb-3">
+                <div class="bg-white/5 rounded-lg p-2 border border-white/5">
+                    <div class="text-[10px] text-museum-muted">雕塑材質</div>
+                    <div class="font-serif font-semibold text-museum-marble mt-0.5">卡拉拉白大理石</div>
+                </div>
+                <div class="bg-white/5 rounded-lg p-2 border border-white/5">
+                    <div class="text-[10px] text-museum-muted">作品全高</div>
+                    <div class="font-serif font-semibold text-museum-marble mt-0.5">255 公分 (含基座)</div>
+                </div>
+                <div class="bg-white/5 rounded-lg p-2 border border-white/5">
+                    <div class="text-[10px] text-museum-muted">藝術流派</div>
+                    <div class="font-serif font-semibold text-museum-marble mt-0.5">義大利盛期巴洛克</div>
+                </div>
+            </div>
+
+            <!-- 5 個熱點快速索引按鈕 -->
+            <div class="text-[11px] text-museum-muted mb-1.5 flex items-center justify-between">
+                <span>點擊下方編號或 3D 標記切換鏡頭特寫：</span>
+                <span id="current-hotspot-index" class="text-museum-gold font-cinzel">1 / 5</span>
+            </div>
+            <div id="hotspot-tabs" class="grid grid-cols-5 gap-1.5">
+                <!-- 由 JS 渲染 1~5 按鈕 -->
+            </div>
+        </div>
+
+        <!-- 深度藝術解析面板 -->
+        <div class="museum-panel rounded-2xl p-4 flex-1 overflow-y-auto pointer-events-auto flex flex-col justify-between">
+            <div>
+                <div class="flex items-center gap-2 mb-2">
+                    <span id="detail-badge" class="w-6 h-6 rounded-full bg-museum-gold text-black font-cinzel font-bold text-xs flex items-center justify-center">1</span>
+                    <span id="detail-subtitle" class="text-xs text-museum-gold tracking-wider font-serif">技法特寫 · 觸覺幻覺</span>
+                </div>
+                <h3 id="detail-title" class="text-lg font-serif font-bold text-white mb-2.5 leading-snug">
+                    大理石化為血肉：深陷肌膚的指印
+                </h3>
+                <p id="detail-desc" class="text-xs md:text-sm text-museum-marble/85 leading-relaxed font-sans space-y-2">
+                    貝尼尼以超凡的鑿刻與拋光技術，讓冰冷堅硬的卡拉拉大理石展現出不可思議的柔軟彈性。冥王普魯托粗獷有力的手指深深陷入普洛塞庇娜的大腿與腰際，石材表面微妙的凹陷與周圍隆起的肌膚皺褶，產生強烈的視覺與觸覺衝擊。
+                </p>
+
+                <!-- 藝術評論引用框 -->
+                <div class="mt-3.5 p-3 rounded-xl bg-gradient-to-br from-museum-gold/15 to-transparent border-l-2 border-museum-gold">
+                    <p id="detail-quote" class="text-xs italic font-serif text-museum-goldLight leading-relaxed">
+                        「我征服了大理石，使它柔順如蠟，這正是雕塑與繪畫融合的奇蹟。」—— 濟安·勞倫佐·貝尼尼
+                    </p>
+                </div>
+            </div>
+
+            <!-- 底部力學與構圖小圖解 -->
+            <div class="mt-4 pt-3 border-t border-white/10">
+                <div class="flex items-center justify-between text-[11px] text-museum-muted mb-2">
+                    <span class="font-serif text-museum-goldLight">巴洛克對位與力學指標</span>
+                    <span id="detail-metric-label">大理石次表面透光率 88%</span>
+                </div>
+                <div class="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                    <div id="detail-metric-bar" class="bg-gradient-to-r from-amber-600 via-museum-gold to-yellow-200 h-full rounded-full transition-all duration-500" style="width: 88%"></div>
+                </div>
+                <div class="flex justify-between mt-3">
+                    <button id="prev-hotspot-btn" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs flex items-center gap-1 transition">
+                        <span>← 上一焦點</span>
+                    </button>
+                    <button id="next-hotspot-btn" class="px-3 py-1.5 rounded-lg bg-museum-gold/20 hover:bg-museum-gold/30 border border-museum-gold/50 text-museum-goldLight text-xs flex items-center gap-1 transition">
+                        <span>下一焦點 →</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 右側：巴洛克戲劇光影與材質實驗室 -->
+    <aside id="right-panel" class="fixed top-20 right-4 w-72 md:w-80 z-30 flex flex-col gap-3 pointer-events-none transition-all duration-300 hidden lg:flex">
+        <div class="museum-panel rounded-2xl p-4 pointer-events-auto space-y-4">
+            <div class="flex items-center justify-between border-b border-white/10 pb-2">
+                <div>
+                    <p class="text-[10px] font-cinzel uppercase tracking-widest text-museum-gold">Lighting & Material Studio</p>
+                    <h2 class="text-sm font-serif font-bold text-white">巴洛克戲劇光影控制台</h2>
+                </div>
+                <span class="text-[11px] text-museum-muted">即時渲染</span>
+            </div>
+
+            <!-- 1. 光源氛圍模式 -->
+            <div>
+                <label class="text-xs text-museum-goldLight font-serif block mb-2">館藏光影模式切換</label>
+                <div class="grid grid-cols-1 gap-1.5">
+                    <button data-light="borghese" class="light-mode-btn active w-full text-left px-3 py-2 rounded-xl border border-museum-gold bg-museum-gold/20 text-xs flex items-center justify-between transition">
+                        <div>
+                            <div class="font-semibold text-white">🏛️ 鮑格才美術館自然光</div>
+                            <div class="text-[10px] text-museum-marble/70">溫暖拱廳漫射光與柔和頂光</div>
+                        </div>
+                        <span class="w-2 h-2 rounded-full bg-museum-gold"></span>
+                    </button>
+                    <button data-light="chiaroscuro" class="light-mode-btn w-full text-left px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs flex items-center justify-between transition">
+                        <div>
+                            <div class="font-semibold text-white">🕯️ 卡拉瓦喬明暗對照法 (Chiaroscuro)</div>
+                            <div class="text-[10px] text-museum-marble/70">強烈單側聚光，凸顯指印凹陷與肌理</div>
+                        </div>
+                        <span class="w-2 h-2 rounded-full bg-white/20"></span>
+                    </button>
+                    <button data-light="underworld" class="light-mode-btn w-full text-left px-3 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs flex items-center justify-between transition">
+                        <div>
+                            <div class="font-semibold text-white">🔥 冥界神話雙色背光</div>
+                            <div class="text-[10px] text-museum-marble/70">埃特納火山熔岩金與冥河幽藍對比</div>
+                        </div>
+                        <span class="w-2 h-2 rounded-full bg-white/20"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. 主光源角度滑桿 -->
+            <div class="space-y-2.5 pt-1 border-t border-white/10">
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-museum-marble/80">主光源水平方位角 (Azimuth)</span>
+                        <span id="azimuth-val" class="font-cinzel text-museum-gold">42°</span>
+                    </div>
+                    <input id="light-azimuth" type="range" min="-180" max="180" value="42">
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-museum-marble/80">主光源仰角高度 (Elevation)</span>
+                        <span id="elevation-val" class="font-cinzel text-museum-gold">55°</span>
+                    </div>
+                    <input id="light-elevation" type="range" min="10" max="88" value="55">
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-museum-marble/80">聚光強度與明暗對比</span>
+                        <span id="intensity-val" class="font-cinzel text-museum-gold">1.8x</span>
+                    </div>
+                    <input id="light-intensity" type="range" min="5" max="35" value="18">
+                </div>
+            </div>
+
+            <!-- 3. 材質檢視切換 -->
+            <div class="pt-2 border-t border-white/10">
+                <label class="text-xs text-museum-goldLight font-serif block mb-2">雕塑表面材質檢視</label>
+                <div class="grid grid-cols-2 gap-1.5 text-xs">
+                    <button data-mat="marble" class="mat-btn px-2.5 py-2 rounded-lg border border-museum-gold bg-museum-gold/20 text-white font-medium transition">
+                        卡拉拉拋光大理石
+                    </button>
+                    <button data-mat="bronze" class="mat-btn px-2.5 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-museum-marble/80 transition">
+                        皇家古典青銅
+                    </button>
+                    <button data-mat="normal" class="mat-btn px-2.5 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-museum-marble/80 transition">
+                        法線張力檢視
+                    </button>
+                    <button data-mat="wireframe" class="mat-btn px-2.5 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-museum-marble/80 transition">
+                        幾何網格線框
+                    </button>
+                </div>
+            </div>
+
+            <!-- 4. 巴洛克螺旋構圖 SVG 圖解 -->
+            <div class="pt-2 border-t border-white/10">
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-xs font-serif text-museum-goldLight">Figura Serpentinata 結構圖</span>
+                    <span class="text-[10px] text-museum-muted">S 型與對角線張力</span>
+                </div>
+                <div class="bg-black/40 rounded-xl p-2.5 border border-white/5 flex items-center gap-3">
+                    <svg class="w-14 h-16 shrink-0" viewBox="0 0 60 80" fill="none">
+                        <!-- X 型對角線 -->
+                        <line x1="10" y1="72" x2="50" y2="10" stroke="rgba(212,175,55,0.35)" stroke-width="1.5" stroke-dasharray="3 2"/>
+                        <line x1="48" y1="72" x2="12" y2="18" stroke="rgba(212,175,55,0.35)" stroke-width="1.5" stroke-dasharray="3 2"/>
+                        <!-- S 型螺旋上升曲線 -->
+                        <path d="M22 74 C 10 56, 48 44, 26 26 C 14 16, 38 8, 44 4" stroke="#d4af37" stroke-width="2.5" stroke-linecap="round"/>
+                        <circle cx="32" cy="42" r="3.5" fill="#f3e5ab"/>
+                        <circle cx="25" cy="23" r="3" fill="#60a5fa"/>
+                    </svg>
+                    <p class="text-[11px] text-museum-marble/75 leading-relaxed">
+                        普魯托向後傾斜的穩重重心與普洛塞庇娜向上扭轉的S型身軀交織成<span class="text-museum-goldLight">雙螺旋上升結構</span>，邀請觀者環繞 180° 觀賞。
+                    </p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 底部：多視角快速導航列 -->
+    <nav class="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-[95%] max-w-3xl pointer-events-none">
+        <div class="museum-panel rounded-2xl px-3 py-2.5 flex items-center justify-between gap-2 overflow-x-auto pointer-events-auto">
+            <div class="flex items-center gap-1.5 shrink-0">
+                <span class="text-[11px] font-cinzel uppercase tracking-wider text-museum-gold px-2 hidden sm:inline">Camera Presets</span>
+                <button data-cam="front" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-serif bg-museum-gold text-black font-semibold transition shrink-0">
+                    正面全景
+                </button>
+                <button data-cam="hero" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-serif bg-white/5 hover:bg-white/15 text-museum-marble transition shrink-0">
+                    仰視英雄視角
+                </button>
+                <button data-cam="thigh" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-serif bg-white/5 hover:bg-white/15 text-museum-marble transition shrink-0">
+                    大腿指印特寫
+                </button>
+                <button data-cam="tear" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-serif bg-white/5 hover:bg-white/15 text-museum-marble transition shrink-0">
+                    神情與眼淚特寫
+                </button>
+                <button data-cam="cerberus" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-serif bg-white/5 hover:bg-white/15 text-museum-marble transition shrink-0">
+                    三頭犬與支撐
+                </button>
+            </div>
+
+            <div class="h-5 w-[1px] bg-white/15 shrink-0"></div>
+
+            <button id="auto-rotate-btn" class="px-3 py-1.5 rounded-xl text-xs font-serif bg-white/5 hover:bg-white/15 text-museum-goldLight border border-museum-gold/40 flex items-center gap-1.5 shrink-0 transition">
+                <svg class="w-3.5 h-3.5 animate-spin" style="animation-duration: 6s" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span id="auto-rotate-label">環繞展示：開</span>
+            </button>
+        </div>
+    </nav>
+
+    <script>
+        // ============================================================================
+        // 1. 5 大互動導覽熱點資料庫 (Hotspots Data)
+        // ============================================================================
+        const HOTSPOTS_DATA = [
+            {
+                id: 1,
+                shortTitle: "大理石化為血肉",
+                subtitle: "技法特寫 · 觸覺幻覺 (Tactile Illusion)",
+                title: "大理石化為血肉：深陷大腿肌膚的指印",
+                desc: "這是整座雕像最令世人屏息的細節。冥王普魯托粗壯的右手四指緊緊扣住普洛塞庇娜豐潤的大腿，堅硬的卡拉拉大理石在貝尼尼的鑿刀下彷彿化為溫熱柔軟的真實血肉。手指施力處產生明顯的肌膚凹陷與邊緣微微隆起的肉感皺褶，完美傳達出暴力抓握的瞬間力道與受害者肌膚的嬌嫩。",
+                quote: "「貝尼尼征服了大理石的堅硬本性，使石頭柔軟如蠟，呈現出人類肌膚受壓時的真實彈性。」",
+                metricLabel: "大理石次表面散射與拋光精度 98%",
+                metricValue: 98,
+                position: new THREE.Vector3(0.42, 0.92, 0.62),
+                camPos: new THREE.Vector3(1.55, 1.05, 1.95),
+                camTarget: new THREE.Vector3(0.25, 0.95, 0.35)
+            },
+            {
+                id: 2,
+                shortTitle: "絕望推拒與眼淚",
+                subtitle: "情感巔峰 · 臉部神情與晶瑩淚珠",
+                title: "絕望的推拒與臉頰上的「大理石眼淚」",
+                desc: "普洛塞庇娜伸出左手奮力推開普魯托的臉龐，使冥王的左眼眉骨與鬍鬚被擠壓變形；而她自己則轉頭向天，微張雙唇發出無聲的悲鳴，向母親穀物女神狄蜜特（Demeter）求救。仔細觀察她的臉頰，貝尼尼以極致的微雕工藝刻畫出數滴立體晶瑩的淚珠，混合著散亂飛揚的髮絲，將恐懼與悲傷凝結於永恆。",
+                quote: "「她的臉龐同時望向側面與觀者，眼角滑落的淚水讓觀者彷彿聽見她在拱廳中的呼喊。」",
+                metricLabel: "戲劇情緒張力 (Pathos) 96%",
+                metricValue: 96,
+                position: new THREE.Vector3(0.18, 2.52, 0.25),
+                camPos: new THREE.Vector3(0.65, 2.68, 1.75),
+                camTarget: new THREE.Vector3(0.0, 2.38, 0.05)
+            },
+            {
+                id: 3,
+                shortTitle: "巴洛克螺旋動態",
+                subtitle: "構圖革命 · 蛇形雙螺旋 (Figura Serpentinata)",
+                title: "打破靜態平衡的「S 型與 X 型」螺旋上升張力",
+                desc: "不同於文藝復興時期穩定的金字塔構圖，貝尼尼在此採用並革新了矯飾主義的「蛇形構圖（Figura Serpentinata）」。普魯托雙腿跨立、上身後傾以平衡懷中掙扎的重量；普洛塞庇娜則劇烈扭腰向上旋起，高舉的右臂成為整座雕像的最高點。兩具軀體交錯形成動態的對角線與雙螺旋，捕捉「行進中的最高潮瞬間」。",
+                quote: "「雕像不再是靜止的紀念碑，而是一場正在觀者眼前發生的神話戲劇。」",
+                metricLabel: "動態對位扭矩 (Contrapposto Torque) 94%",
+                metricValue: 94,
+                position: new THREE.Vector3(-0.32, 1.75, 0.42),
+                camPos: new THREE.Vector3(-1.85, 1.85, 3.35),
+                camTarget: new THREE.Vector3(0.0, 1.45, 0.0)
+            },
+            {
+                id: 4,
+                shortTitle: "冥界三頭犬賽伯拉斯",
+                subtitle: "神話象徵與結構力學 · Cerberus",
+                title: "冥界守門犬賽伯拉斯：神話敘事與結構力學的雙重巧思",
+                desc: "盤踞在普魯托腳邊的地獄三頭犬賽伯拉斯（Cerberus）正將三個頭朝向不同方向狂吠警戒，象徵普魯托已經帶著普洛塞庇娜跨越人間與冥界的交界。在物理力學上，整座高達 2.55 公尺的大理石群雕有大量懸空扭轉的肢體，賽伯拉斯厚實的身軀恰好與普魯托的右腿及垂落的布幔連成一體，成為支撐上方數噸重石材的關鍵第三支點。",
+                quote: "「貝尼尼巧妙地將結構工程所需的承重石柱，轉化為狂吠的地獄三頭犬與流動的絲綢布幔。」",
+                metricLabel: "懸臂結構承重穩定度 92%",
+                metricValue: 92,
+                position: new THREE.Vector3(0.68, -0.35, 0.45),
+                camPos: new THREE.Vector3(2.25, -0.1, 2.05),
+                camTarget: new THREE.Vector3(0.45, -0.25, 0.15)
+            },
+            {
+                id: 5,
+                shortTitle: "基座銘文與委託",
+                subtitle: "歷史背景 · 紅衣主教鮑格才與巴貝里尼銘文",
+                title: "紅衣主教的野心與底座拉丁文雙行詩銘文",
+                desc: "本作由藝術贊助人西皮奧內·鮑格才紅衣主教（Cardinal Scipione Borghese）委託年僅 23 歲的貝尼尼創作，於 1622 年完成後曾贈予盧多維西紅衣主教，直到 1908 年由義大利政府購回並重返鮑格才美術館。古典大理石基座正面鐫刻著後來成為教宗烏爾班八世的馬菲奧·巴貝里尼所作的拉丁銘文，以普洛塞庇娜的第一人稱發出感嘆。",
+                quote: "「Quisquis humi pronus flores legis, inspice, saeva me Ditis rapuit domina subita...（喔，俯身採花的人啊，請看我如何被殘酷的冥王突然擄走。）」",
+                metricLabel: "館藏歷史價值與文獻完整度 100%",
+                metricValue: 100,
+                position: new THREE.Vector3(0.0, -1.55, 0.85),
+                camPos: new THREE.Vector3(0.0, -0.85, 3.15),
+                camTarget: new THREE.Vector3(0.0, -1.25, 0.0)
+            }
+        ];
+
+        // ============================================================================
+        // 2. Three.js 場景、相機、渲染器與大理石程序化紋理初始化
+        // ============================================================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0d0b10, 0.065);
+
+        const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0.2, 1.15, 5.6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.12;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 0.75, 0);
+        controls.minDistance = 1.25;
+        controls.maxDistance = 9.5;
+        controls.maxPolarAngle = Math.PI * 0.56;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.65;
+
+        // 建立程序化卡拉拉大理石紋理與凹凸貼圖 (Procedural Carrara Marble Texture)
+        function createCarraraMarbleTextures() {
+            const size = 512;
+            const colorCanvas = document.createElement('canvas');
+            colorCanvas.width = size;
+            colorCanvas.height = size;
+            const ctx = colorCanvas.getContext('2d');
+
+            // 溫潤象牙白底色
+            ctx.fillStyle = '#f6f3ec';
+            ctx.fillRect(0, 0, size, size);
+
+            // 繪製柔和的卡拉拉灰金色礦物石紋與雲霧層次
+            for (let i = 0; i < 45; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const radius = 60 + Math.random() * 160;
+                const grad = ctx.createRadialGradient(x, y, 5, x, y, radius);
+                grad.addColorStop(0, 'rgba(218, 210, 198, 0.16)');
+                grad.addColorStop(1, 'rgba(246, 243, 236, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 細膩大理石裂紋脈絡 (Veins)
+            for (let v = 0; v < 28; v++) {
+                ctx.beginPath();
+                let vx = Math.random() * size;
+                let vy = Math.random() * size;
+                ctx.moveTo(vx, vy);
+                const steps = 18;
+                for (let s = 0; s < steps; s++) {
+                    vx += (Math.random() - 0.35) * 32;
+                    vy += (Math.random() - 0.25) * 32;
+                    ctx.lineTo(vx, vy);
+                }
+                ctx.strokeStyle = v % 3 === 0 ? 'rgba(185, 165, 135, 0.14)' : 'rgba(145, 142, 150, 0.12)';
+                ctx.lineWidth = 0.8 + Math.random() * 2.2;
+                ctx.stroke();
+            }
+
+            const colorTex = new THREE.CanvasTexture(colorCanvas);
+            colorTex.wrapS = THREE.RepeatWrapping;
+            colorTex.wrapT = THREE.RepeatWrapping;
+            colorTex.repeat.set(2, 2);
+
+            return { colorTex };
+        }
+
+        const { colorTex } = createCarraraMarbleTextures();
+
+        // 定義四種可切換檢視材質
+        const materials = {
+            marble: new THREE.MeshPhysicalMaterial({
+                color: 0xf7f3eb,
+                map: colorTex,
+                roughness: 0.24,
+                metalness: 0.02,
+                clearcoat: 0.38,
+                clearcoatRoughness: 0.22,
+                reflectivity: 0.65,
+                emissive: 0x221912,
+                emissiveIntensity: 0.08
+            }),
+            draperyMarble: new THREE.MeshPhysicalMaterial({
+                color: 0xefe9dd,
+                map: colorTex,
+                roughness: 0.34,
+                metalness: 0.02,
+                clearcoat: 0.2,
+                emissive: 0x1c150e,
+                emissiveIntensity: 0.06,
+                side: THREE.DoubleSide
+            }),
+            bronze: new THREE.MeshStandardMaterial({
+                color: 0x8c6239,
+                roughness: 0.28,
+                metalness: 0.86,
+                emissive: 0x1a0f05,
+                emissiveIntensity: 0.1
+            }),
+            normal: new THREE.MeshNormalMaterial({
+                flatShading: false
+            }),
+            wireframe: new THREE.MeshBasicMaterial({
+                color: 0xd4af37,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.55
+            }),
+            goldCrown: new THREE.MeshStandardMaterial({
+                color: 0xe5c158,
+                roughness: 0.25,
+                metalness: 0.78
+            }),
+            tearCrystal: new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+                roughness: 0.02,
+                metalness: 0.1,
+                transmission: 0.92,
+                transparent: true,
+                opacity: 0.9,
+                clearcoat: 1.0,
+                emissive: 0x93c5fd,
+                emissiveIntensity: 0.35
+            }),
+            pedestal: new THREE.MeshStandardMaterial({
+                color: 0xdcd5c9,
+                map: colorTex,
+                roughness: 0.45,
+                metalness: 0.08
+            })
+        };
+
+        // 儲存所有屬於雕像本體的 Mesh 以便一鍵切換材質
+        const sculptureMeshes = [];
+
+        // 輔助函式：建立有機肌肉形變幾何體并加入群組
+        function addSculptPart(parent, geo, mat, pos, rot, scale, deformFn) {
+            if (deformFn) {
+                const posAttr = geo.attributes.position;
+                const v = new THREE.Vector3();
+                for (let i = 0; i < posAttr.count; i++) {
+                    v.fromBufferAttribute(posAttr, i);
+                    deformFn(v);
+                    posAttr.setXYZ(i, v.x, v.y, v.z);
+                }
+                geo.computeVertexNormals();
+            }
+            const mesh = new THREE.Mesh(geo, mat);
+            if (pos) mesh.position.set(pos[0], pos[1], pos[2]);
+            if (rot) mesh.rotation.set(rot[0], rot[1], rot[2]);
+            if (scale) mesh.scale.set(scale[0], scale[1], scale[2]);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            parent.add(mesh);
+            sculptureMeshes.push({ mesh, defaultMat: mat });
+            return mesh;
+        }
+
+        // 輔助函式：沿著 3D 曲線建立具有粗細變化(Tapered)的肢體/軀幹/布幔管道
+        function createLimbAlongCurve(parent, points, radii, radialSegments = 24, tubularSegments = 40, mat = materials.marble) {
+            const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
+            const geo = new THREE.TubeBufferGeometry(curve, tubularSegments, 1, radialSegments, false);
+            const posAttr = geo.attributes.position;
+            const normalAttr = geo.attributes.normal;
+            const uvAttr = geo.attributes.uv;
+
+            const v = new THREE.Vector3();
+            const n = new THREE.Vector3();
+            for (let i = 0; i < posAttr.count; i++) {
+                const u = uvAttr.getX(i); // 0 ~ 1 沿著曲線進度
+                // 線性插值半徑陣列
+                const scaledU = u * (radii.length - 1);
+                const idx = Math.floor(scaledU);
+                const frac = scaledU - idx;
+                const r0 = radii[idx];
+                const r1 = radii[Math.min(idx + 1, radii.length - 1)];
+                const targetRadius = r0 + (r1 - r0) * frac;
+
+                const center = curve.getPointAt(u);
+                v.fromBufferAttribute(posAttr, i);
+                n.subVectors(v, center).normalize();
+
+                // 加入細微解剖肌肉起伏感
+                const angle = Math.atan2(n.y, n.x);
+                const muscleRipple = 1.0 + 0.045 * Math.sin(u * Math.PI * 4 + angle * 2);
+
+                v.copy(center).addScaledVector(n, targetRadius * muscleRipple);
+                posAttr.setXYZ(i, v.x, v.y, v.z);
+            }
+            geo.computeVertexNormals();
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            parent.add(mesh);
+            sculptureMeshes.push({ mesh, defaultMat: mat });
+
+            // 封閉兩端為圓潤球體
+            const startCap = new THREE.Mesh(new THREE.SphereBufferGeometry(radii[0], 16, 16), mat);
+            startCap.position.set(...points[0]);
+            parent.add(startCap);
+            sculptureMeshes.push({ mesh: startCap, defaultMat: mat });
+
+            const endCap = new THREE.Mesh(new THREE.SphereBufferGeometry(radii[radii.length - 1], 16, 16), mat);
+            endCap.position.set(...points[points.length - 1]);
+            parent.add(endCap);
+            sculptureMeshes.push({ mesh: endCap, defaultMat: mat });
+
+            return mesh;
+        }
+
+        // ============================================================================
+        // 3. 建構《普魯托強擄普洛塞庇娜》立體群雕 (Procedural Baroque Masterpiece)
+        // ============================================================================
+        const masterGroup = new THREE.Group();
+        scene.add(masterGroup);
+
+        // --- A. 古典鮑格才大理石基座與拉丁文銘文牌 (Pedestal & Inscription) ---
+        function buildPedestal() {
+            const pedGroup = new THREE.Group();
+            masterGroup.add(pedGroup);
+
+            // 雕像腳下的自然岩石與不規則大理石地台
+            addSculptPart(pedGroup, new THREE.CylinderBufferGeometry(0.95, 1.08, 0.36, 48, 8), materials.marble, [0.05, -0.92, 0.05], [0, 0, 0], [1, 1, 0.88], (v) => {
+                const noise = Math.sin(v.x * 5) * Math.cos(v.z * 5) * 0.04;
+                v.y += noise;
+                v.x += Math.sin(v.y * 6 + v.z * 3) * 0.03;
+            });
+
+            // 倒在底座上的普魯托雙叉戟/權杖 (Scepter / Bident on the base)
+            createLimbAlongCurve(pedGroup, [
+                [-0.75, -0.74, 0.45],
+                [0.0, -0.73, 0.55],
+                [0.82, -0.71, 0.35]
+            ], [0.025, 0.028, 0.025], 12, 20, materials.marble);
+
+            // 建築級多層古典線腳基座
+            const topMolding = new THREE.Mesh(new THREE.BoxBufferGeometry(2.15, 0.16, 1.85), materials.pedestal);
+            topMolding.position.set(0.05, -1.16, 0.05);
+            topMolding.receiveShadow = true;
+            pedGroup.add(topMolding);
+
+            const mainPlinth = new THREE.Mesh(new THREE.BoxBufferGeometry(1.96, 0.95, 1.66), materials.pedestal);
+            mainPlinth.position.set(0.05, -1.68, 0.05);
+            mainPlinth.receiveShadow = true;
+            pedGroup.add(mainPlinth);
+
+            const bottomStep = new THREE.Mesh(new THREE.BoxBufferGeometry(2.35, 0.24, 2.05), materials.pedestal);
+            bottomStep.position.set(0.05, -2.25, 0.05);
+            bottomStep.receiveShadow = true;
+            pedGroup.add(bottomStep);
+
+            // 基座正面的拉丁文雙行詩銘文浮雕牌 (Canvas Texture)
+            const plaqueCanvas = document.createElement('canvas');
+            plaqueCanvas.width = 512;
+            plaqueCanvas.height = 256;
+            const pCtx = plaqueCanvas.getContext('2d');
+            pCtx.fillStyle = '#d5cec0';
+            pCtx.fillRect(0, 0, 512, 256);
+            pCtx.strokeStyle = '#9a8c70';
+            pCtx.lineWidth = 6;
+            pCtx.strokeRect(14, 14, 484, 228);
+
+            pCtx.fillStyle = '#4a4236';
+            pCtx.font = 'bold 20px "Cinzel", serif';
+            pCtx.textAlign = 'center';
+            pCtx.fillText('CCCXVIII', 256, 56);
+            pCtx.font = '15px "Cinzel", serif';
+            pCtx.fillText('QVISQVIS HVMI PRONVS FLORES LEGIS', 256, 108);
+            pCtx.fillText('INSPICE SAEVA ME DITIS RAPVIT', 256, 140);
+            pCtx.fillText('DOMINA SVBITA PLVTONIS AMOR', 256, 172);
+            pCtx.font = '13px "Cinzel", serif';
+            pCtx.fillStyle = '#756853';
+            pCtx.fillText('IO. LAVR. BERNINVS · MDCXXII', 256, 214);
+
+            const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
+            const plaqueMesh = new THREE.Mesh(
+                new THREE.PlaneBufferGeometry(1.38, 0.64),
+                new THREE.MeshStandardMaterial({ map: plaqueTex, roughness: 0.5 })
+            );
+            plaqueMesh.position.set(0.05, -1.66, 0.885);
+            pedGroup.add(plaqueMesh);
+        }
+
+        // --- B. 冥王普魯托 (Pluto)：強健肌肉、後傾動態對位、捲鬚與皇冠 ---
+        function buildPluto() {
+            const plutoGroup = new THREE.Group();
+            masterGroup.add(plutoGroup);
+
+            // 1. 普魯托左腿 (向前跨步、承受核心重量的精壯肌肉腿，對應原圖前景壯碩大腿與小腿)
+            createLimbAlongCurve(plutoGroup, [
+                [-0.08, 0.58, 0.12],  // 髖關節
+                [0.02, 0.08, 0.36],   // 股四頭肌隆起
+                [-0.02, -0.35, 0.32], // 膝蓋
+                [-0.06, -0.62, 0.22], // 小腿腓腸肌
+                [-0.03, -0.82, 0.35]  // 腳踝與前踏腳掌
+            ], [0.27, 0.25, 0.17, 0.18, 0.11]);
+
+            // 左腳掌與腳趾細節
+            addSculptPart(plutoGroup, new THREE.BoxBufferGeometry(0.18, 0.09, 0.32, 8, 4, 8), materials.marble, [-0.03, -0.85, 0.44], [0.08, 0.05, 0], [1, 1, 1], (v) => {
+                if (v.z > 0.08) v.y -= (v.z - 0.08) * 0.25;
+            });
+
+            // 2. 普魯托右腿 (向後左方跨立支撐，腳跟微抬展現行進張力)
+            createLimbAlongCurve(plutoGroup, [
+                [-0.36, 0.62, -0.05], // 左後側臀髖
+                [-0.48, 0.12, 0.04],  // 大腿外展
+                [-0.46, -0.36, -0.05],// 膝蓋
+                [-0.55, -0.65, -0.18],// 小腿
+                [-0.58, -0.82, -0.08] // 腳掌
+            ], [0.26, 0.24, 0.16, 0.17, 0.10]);
+
+            addSculptPart(plutoGroup, new THREE.BoxBufferGeometry(0.17, 0.09, 0.30, 8, 4, 8), materials.marble, [-0.58, -0.84, 0.02], [0.15, -0.35, 0]);
+
+            // 3. 普魯托強健扭轉的胸腹軀幹 (Heroic Contrapposto Torso with Obliques & Ribcage)
+            addSculptPart(
+                plutoGroup,
+                new THREE.CylinderBufferGeometry(0.39, 0.31, 1.28, 48, 48),
+                materials.marble,
+                [-0.25, 1.22, 0.04],
+                [-0.18, 0.32, 0.24],
+                [1.08, 1.0, 0.82],
+                (v) => {
+                    // 模擬巴洛克雕塑深邃的腹外斜肌、肋骨弓與背闊肌起伏
+                    const ribWave = Math.sin(v.y * 14.0) * 0.022 * (v.z > 0 ? 1 : 0.3);
+                    const chestExpand = v.y > 0.15 ? 0.065 * Math.cos((v.y - 0.35) * 3.0) : 0;
+                    const lineaAlba = (v.z > 0.1 && Math.abs(v.x) < 0.08) ? -0.028 * Math.exp(-v.x * v.x * 220) : 0;
+                    v.x += Math.sin(v.y * 2.2) * 0.05 + chestExpand * Math.sign(v.x);
+                    v.z += ribWave + lineaAlba + chestExpand * 0.5;
+                }
+            );
+
+            // 4. 普魯托頭部、被推擠變形的眉眼、濃密巴洛克捲曲鬍鬚與帝王皇冠
+            const plutoHeadGroup = new THREE.Group();
+            plutoHeadGroup.position.set(-0.46, 2.02, 0.06);
+            plutoHeadGroup.rotation.set(-0.22, 0.48, 0.32); // 被普洛塞庇娜左手猛力向後推擠的動態角度
+            plutoGroup.add(plutoHeadGroup);
+
+            // 頭顱與臉部骨骼
+            addSculptPart(plutoHeadGroup, new THREE.SphereBufferGeometry(0.24, 36, 36), materials.marble, [0, 0, 0], [0, 0, 0], [0.92, 1.12, 0.98], (v) => {
+                // 雕刻深邃眼窩、高挺鼻樑與被手掌推擠的左臉皺褶
+                if (v.z > 0.12 && v.y > 0.02 && v.y < 0.12) {
+                    v.z -= 0.035 * Math.cos(v.x * 16);
+                }
+                if (v.x > 0.06 && v.z > 0.08) {
+                    // 被普洛塞庇娜左手掌推擠產生的肌膚擠壓感
+                    v.z += 0.025 * Math.sin(v.y * 28);
+                }
+            });
+
+            // 濃密飛揚的巴洛克捲髮與絡腮鬍 (Voluminous Curls & Beard)
+            const beardPositions = [
+                [0.0, -0.16, 0.18, 0.085], [-0.09, -0.15, 0.16, 0.08], [0.09, -0.14, 0.16, 0.08],
+                [-0.16, -0.09, 0.12, 0.075], [0.15, -0.09, 0.12, 0.075], [0.0, -0.23, 0.14, 0.075],
+                [-0.07, -0.22, 0.13, 0.07], [0.07, -0.21, 0.13, 0.07], [-0.19, 0.04, 0.02, 0.08],
+                [-0.21, 0.14, -0.04, 0.085], [-0.15, 0.21, -0.08, 0.08], [0.0, 0.22, -0.12, 0.09],
+                [-0.12, 0.08, -0.18, 0.09], [0.12, 0.15, -0.12, 0.08]
+            ];
+            beardPositions.forEach(([bx, by, bz, br]) => {
+                addSculptPart(plutoHeadGroup, new THREE.SphereBufferGeometry(br, 16, 16), materials.marble, [bx, by, bz], [Math.random(), Math.random(), 0], [1.2, 0.9, 1.1], (v) => {
+                    v.x += Math.sin(v.y * 30) * 0.012;
+                });
+            });
+
+            // 冥王尖刺皇冠 (Spiked Crown of Pluto)
+            const crownBand = new THREE.Mesh(new THREE.TorusBufferGeometry(0.21, 0.022, 12, 32), materials.goldCrown);
+            crownBand.position.set(0, 0.17, 0.01);
+            crownBand.rotation.set(Math.PI / 2 - 0.18, 0, 0);
+            plutoHeadGroup.add(crownBand);
+
+            for (let c = 0; c < 7; c++) {
+                const angle = (c / 7) * Math.PI * 1.4 - Math.PI * 0.2;
+                const spike = new THREE.Mesh(new THREE.ConeBufferGeometry(0.028, 0.11, 8), materials.goldCrown);
+                spike.position.set(Math.cos(angle) * 0.21, 0.22, Math.sin(angle) * 0.21);
+                spike.rotation.z = -Math.cos(angle) * 0.25;
+                spike.rotation.x = Math.sin(angle) * 0.25;
+                plutoHeadGroup.add(spike);
+            }
+
+            // 5. 普魯托強壯的右臂（橫跨胸前，手掌緊緊抓握普洛塞庇娜的大腿）
+            createLimbAlongCurve(plutoGroup, [
+                [-0.44, 1.62, 0.16], // 右肩三角肌
+                [-0.25, 1.24, 0.42], // 二頭肌與手肘
+                [0.08, 1.12, 0.56],  // 前臂肌肉
+                [0.34, 0.98, 0.52]   // 手腕抵達普洛塞庇娜大腿前側
+            ], [0.16, 0.135, 0.115, 0.085]);
+
+            // 6. 普魯托左臂（環抱並托舉普洛塞庇娜的腰臀）
+            createLimbAlongCurve(plutoGroup, [
+                [-0.08, 1.66, -0.14], // 左肩
+                [0.32, 1.54, -0.18],  // 左肘
+                [0.48, 1.48, 0.08],   // 左前臂
+                [0.42, 1.46, 0.28]    // 左手掌扣住普洛塞庇娜左腰肋部
+            ], [0.15, 0.13, 0.11, 0.085]);
+        }
+
+        // --- C. 普洛塞庇娜 (Proserpina)：螺旋上升軀幹、大腿深陷指印、求救手勢與晶瑩眼淚 ---
+        function buildProserpina() {
+            const prosGroup = new THREE.Group();
+            masterGroup.add(prosGroup);
+
+            // 1. 普洛塞庇娜優雅而驚恐扭轉的軀幹 (S-Curve Serpentine Torso)
+            createLimbAlongCurve(prosGroup, [
+                [0.26, 1.02, 0.24], // 臀部骨盆
+                [0.28, 1.42, 0.18], // 纖細腰際 (被普魯托左手扣住處)
+                [0.20, 1.84, 0.12], // 胸廓扭轉
+                [0.14, 2.15, 0.08]  // 頸部與雙肩基底
+            ], [0.27, 0.21, 0.24, 0.16], 32, 48, materials.marble);
+
+            // 女性胸廓柔美雕塑線條
+            addSculptPart(prosGroup, new THREE.SphereBufferGeometry(0.13, 24, 24), materials.marble, [0.09, 1.86, 0.27], [0, 0, 0], [1.0, 0.92, 0.85]);
+            addSculptPart(prosGroup, new THREE.SphereBufferGeometry(0.13, 24, 24), materials.marble, [0.26, 1.84, 0.26], [0, 0, 0], [1.0, 0.92, 0.85]);
+
+            // 2. 【核心亮點 1】普洛塞庇娜的左大腿 — 具備真實「手指壓痕凹陷與邊緣肉感隆起」的高細分幾何體
+            const thighGeo = new THREE.CylinderBufferGeometry(0.165, 0.235, 0.72, 64, 64);
+            const fingerPressPoints = [
+                new THREE.Vector3(0.11, -0.08, 0.16),
+                new THREE.Vector3(0.13, -0.01, 0.15),
+                new THREE.Vector3(0.12, 0.06, 0.15),
+                new THREE.Vector3(0.09, 0.13, 0.14)
+            ];
+            addSculptPart(prosGroup, thighGeo, materials.marble, [0.28, 0.92, 0.36], [0.58, -0.18, -0.25], [1.0, 1.0, 1.06], (v) => {
+                // 對每個頂點計算與普魯托四根手指按壓點的距離，產生深陷凹坑與邊緣隆起皺褶 (Cushioning bulge)
+                fingerPressPoints.forEach(fp => {
+                    const dist = v.distanceTo(fp);
+                    if (dist < 0.085) {
+                        const normalized = dist / 0.085;
+                        // 中心深陷，外圍微隆起模擬柔軟皮下脂肪受擠壓
+                        const indent = -0.032 * Math.exp(-normalized * normalized * 4.5) + 0.009 * Math.exp(-Math.pow(normalized - 0.72, 2) * 18.0);
+                        v.x += indent * 0.75;
+                        v.z += indent * 0.75;
+                    }
+                });
+            });
+
+            // 普魯托扣入大腿凹痕中的四根立體手指與拇指
+            const fingerOffsets = [-0.07, -0.01, 0.05, 0.11];
+            fingerOffsets.forEach((fy, idx) => {
+                const fMesh = createLimbAlongCurve(prosGroup, [
+                    [0.34, 0.98 + fy * 0.7, 0.53],
+                    [0.41, 0.95 + fy * 0.85, 0.49],
+                    [0.44, 0.93 + fy * 0.9, 0.42]
+                ], [0.028, 0.024, 0.019], 12, 16, materials.marble);
+            });
+            // 普魯托左手扣入普洛塞庇娜腰際的四根手指
+            [-0.05, 0.0, 0.05, 0.10].forEach((fy) => {
+                createLimbAlongCurve(prosGroup, [
+                    [0.45, 1.46 + fy * 0.7, 0.24],
+                    [0.39, 1.45 + fy * 0.8, 0.31],
+                    [0.32, 1.44 + fy * 0.8, 0.33]
+                ], [0.025, 0.021, 0.017], 12, 14, materials.marble);
+            });
+
+            // 普洛塞庇娜的左小腿與懸空掙扎的腳掌 (彎曲於三頭犬上方)
+            createLimbAlongCurve(prosGroup, [
+                [0.24, 0.65, 0.56], // 左膝蓋
+                [0.44, 0.38, 0.50], // 小腿
+                [0.64, 0.16, 0.46]  // 懸空腳踝與腳背
+            ], [0.145, 0.115, 0.075]);
+
+            addSculptPart(prosGroup, new THREE.BoxBufferGeometry(0.11, 0.07, 0.22), materials.marble, [0.69, 0.11, 0.52], [0.55, 0.25, -0.2]);
+
+            // 3. 普洛塞庇娜的右腿（下方交疊踢動的大腿與小腿）
+            createLimbAlongCurve(prosGroup, [
+                [0.34, 0.96, 0.18], // 右髖
+                [0.36, 0.48, 0.28], // 右膝
+                [0.54, 0.02, 0.36], // 右小腿
+                [0.64, -0.18, 0.42] // 右腳尖
+            ], [0.21, 0.14, 0.11, 0.07]);
+
+            // 4. 【核心亮點 2】普洛塞庇娜的頭部、絕望呼救神情、飛揚捲髮與「晶瑩 3D 大理石眼淚」
+            const prosHeadGroup = new THREE.Group();
+            prosHeadGroup.position.set(0.18, 2.46, 0.08);
+            prosHeadGroup.rotation.set(-0.35, -0.28, -0.22); // 仰頭向天呼救
+            prosGroup.add(prosHeadGroup);
+
+            // 頸部
+            createLimbAlongCurve(prosGroup, [
+                [0.15, 2.12, 0.08],
+                [0.17, 2.34, 0.08]
+            ], [0.11, 0.095]);
+
+            // 精緻鵝蛋臉龐與微張雙唇
+            addSculptPart(prosHeadGroup, new THREE.SphereBufferGeometry(0.20, 36, 36), materials.marble, [0, 0, 0], [0, 0, 0], [0.88, 1.12, 0.95], (v) => {
+                // 微張呼救的嘴唇凹陷與立體鼻樑
+                if (v.z > 0.15 && v.y > -0.10 && v.y < -0.04 && Math.abs(v.x) < 0.045) {
+                    v.z -= 0.025;
+                }
+            });
+
+            // 飛揚散亂的巴洛克髮辮 (Windblown Baroque Curls)
+            const hairCurls = [
+                [0.12, 0.08, -0.12, 0.08], [0.18, 0.0, -0.15, 0.075], [0.22, -0.09, -0.16, 0.07],
+                [0.26, -0.18, -0.18, 0.065], [0.02, 0.16, -0.10, 0.085], [-0.10, 0.15, -0.08, 0.08],
+                [0.15, 0.15, -0.04, 0.075], [0.20, -0.05, -0.06, 0.07]
+            ];
+            hairCurls.forEach(([hx, hy, hz, hr]) => {
+                addSculptPart(prosHeadGroup, new THREE.SphereBufferGeometry(hr, 14, 14), materials.marble, [hx, hy, hz], [0, 0, 0], [1.3, 0.85, 1.1]);
+            });
+
+            // 臉頰上著名的「晶瑩 3D 眼淚」 (The Famous 3D Marble Tear Drops)
+            const tearDrop1 = new THREE.Mesh(new THREE.SphereBufferGeometry(0.016, 16, 16), materials.tearCrystal);
+            tearDrop1.scale.set(0.8, 1.45, 0.8);
+            tearDrop1.position.set(-0.065, -0.015, 0.182);
+            prosHeadGroup.add(tearDrop1);
+
+            const tearDrop2 = new THREE.Mesh(new THREE.SphereBufferGeometry(0.013, 16, 16), materials.tearCrystal);
+            tearDrop2.scale.set(0.8, 1.35, 0.8);
+            tearDrop2.position.set(-0.078, -0.055, 0.175);
+            prosHeadGroup.add(tearDrop2);
+
+            // 5. 普洛塞庇娜的左臂（用力推開普魯托的臉龐）
+            createLimbAlongCurve(prosGroup, [
+                [0.05, 2.08, 0.18],  // 左肩
+                [-0.18, 1.98, 0.28], // 手肘微彎
+                [-0.35, 2.04, 0.18]  // 左手掌抵住普魯托左臉頰與眉骨
+            ], [0.105, 0.088, 0.072]);
+
+            // 6. 普洛塞庇娜的右臂（向天高舉求救，構成整座群雕的螺旋頂點）
+            createLimbAlongCurve(prosGroup, [
+                [0.24, 2.15, 0.02],  // 右肩
+                [0.06, 2.48, -0.06], // 上揚的手肘
+                [-0.05, 2.86, -0.02] // 高舉向天的手腕與張開的五指
+            ], [0.105, 0.085, 0.065]);
+
+            // 高舉向天求救的張開五指細節
+            for (let f = 0; f < 5; f++) {
+                const angle = (f - 2) * 0.22;
+                createLimbAlongCurve(prosGroup, [
+                    [-0.05, 2.86, -0.02],
+                    [-0.05 + Math.sin(angle) * 0.08, 2.98, -0.02 + Math.cos(angle) * 0.04]
+                ], [0.016, 0.011], 8, 8, materials.marble);
+            }
+        }
+
+        // --- D. 地獄三頭犬賽伯拉斯 (Cerberus) 與流動巴洛克布幔 (Flowing Drapery) ---
+        function buildCerberusAndDrapery() {
+            const supportGroup = new THREE.Group();
+            masterGroup.add(supportGroup);
+
+            // 1. 賽伯拉斯厚實的犬軀（坐立於右下方，兼具結構力學支撐）
+            createLimbAlongCurve(supportGroup, [
+                [0.48, -0.78, 0.12], // 後臀與底座連接
+                [0.52, -0.42, 0.22], // 強壯胸腹
+                [0.56, -0.08, 0.28]  // 頸部匯聚處
+            ], [0.28, 0.25, 0.21], 24, 32, materials.marble);
+
+            // 賽伯拉斯前爪抓地支撐
+            createLimbAlongCurve(supportGroup, [
+                [0.52, -0.35, 0.28],
+                [0.58, -0.62, 0.36],
+                [0.64, -0.82, 0.44]
+            ], [0.10, 0.08, 0.09], 14, 20, materials.marble);
+
+            createLimbAlongCurve(supportGroup, [
+                [0.36, -0.38, 0.22],
+                [0.38, -0.64, 0.28],
+                [0.42, -0.82, 0.34]
+            ], [0.095, 0.075, 0.085], 14, 20, materials.marble);
+
+            // 三顆朝向不同方位警戒咆哮的犬首 (Three Heads of Cerberus)
+            const dogHeads = [
+                { pos: [0.64, 0.12, 0.32], rot: [-0.45, 0.35, -0.15] }, // 仰頭向上方狂吠的主犬首
+                { pos: [0.72, -0.12, 0.18], rot: [0.05, 0.85, 0.1] },   // 朝右側警戒的犬首
+                { pos: [0.46, -0.06, 0.38], rot: [-0.15, -0.25, 0.05] } // 朝右前方低吼的犬首
+            ];
+
+            dogHeads.forEach(dh => {
+                const headG = new THREE.Group();
+                headG.position.set(...dh.pos);
+                headG.rotation.set(...dh.rot);
+                supportGroup.add(headG);
+
+                // 犬頭顱
+                addSculptPart(headG, new THREE.SphereBufferGeometry(0.135, 20, 20), materials.marble, [0, 0, 0], [0, 0, 0], [0.95, 0.95, 1.15]);
+                // 張開咆哮的上下顎吻部
+                addSculptPart(headG, new THREE.ConeBufferGeometry(0.085, 0.18, 16), materials.marble, [0, 0.03, 0.14], [Math.PI / 2 - 0.15, 0, 0]);
+                addSculptPart(headG, new THREE.ConeBufferGeometry(0.065, 0.15, 16), materials.marble, [0, -0.04, 0.12], [Math.PI / 2 + 0.25, 0, 0]);
+            });
+
+            // 2. 纏繞飛揚的巴洛克絲綢布幔 (Swirling Baroque Drapery connecting figures to base)
+            createLimbAlongCurve(supportGroup, [
+                [0.12, 1.95, -0.08], // 自普洛塞庇娜肩背垂下
+                [0.38, 1.35, -0.06],
+                [0.12, 0.72, 0.22],  // 環繞普魯托腰胯與大腿交界
+                [-0.08, 0.22, 0.28], // 垂落於普魯托左大腿內側
+                [0.08, -0.35, 0.16],
+                [0.16, -0.78, 0.12]  // 落地形成力學支撐褶皺
+            ], [0.09, 0.14, 0.18, 0.15, 0.19, 0.24], 24, 48, materials.draperyMarble);
+        }
+
+        // --- E. 螺旋上升張力線輔助視覺化 (Figura Serpentinata Helper Diagram) ---
+        const diagramGroup = new THREE.Group();
+        diagramGroup.visible = false;
+        masterGroup.add(diagramGroup);
+
+        function buildSpiralDiagram() {
+            const spiralPoints = [
+                new THREE.Vector3(-0.55, -0.82, -0.08),
+                new THREE.Vector3(-0.28, 0.15, 0.25),
+                new THREE.Vector3(0.32, 0.95, 0.45),
+                new THREE.Vector3(-0.22, 1.65, 0.22),
+                new THREE.Vector3(0.22, 2.25, 0.12),
+                new THREE.Vector3(-0.05, 2.98, -0.02)
+            ];
+            const curve = new THREE.CatmullRomCurve3(spiralPoints);
+            const tubeGeo = new THREE.TubeBufferGeometry(curve, 64, 0.022, 12, false);
+            const tubeMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.85 });
+            diagramGroup.add(new THREE.Mesh(tubeGeo, tubeMat));
+
+            // 對角線張力軸
+            const diagMat = new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.75 });
+            const diagGeo1 = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-0.65, -0.85, 0.2),
+                new THREE.Vector3(0.55, 2.85, 0.2)
+            ]);
+            const diagGeo2 = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0.75, -0.85, 0.2),
+                new THREE.Vector3(-0.65, 2.45, 0.2)
+            ]);
+            diagramGroup.add(new THREE.Line(diagGeo1, diagMat));
+            diagramGroup.add(new THREE.Line(diagGeo2, diagMat));
+        }
+
+        // --- F. 鮑格才美術館金色微粒與古典拱廳地坪氛圍 ---
+        function buildMuseumAtmosphere() {
+            // 博物館深色拋光大理石反射地面
+            const floorGeo = new THREE.CircleBufferGeometry(12, 64);
+            const floorMat = new THREE.MeshStandardMaterial({
+                color: 0x121016,
+                roughness: 0.35,
+                metalness: 0.3
+            });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -2.38;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // 漂浮的金色古典微塵粒子
+            const particleCount = 260;
+            const pGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 9.5;
+                positions[i * 3 + 1] = -2.0 + Math.random() * 6.0;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 9.5;
+            }
+            pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const pMat = new THREE.PointsMaterial({
+                color: 0xd4af37,
+                size: 0.032,
+                transparent: true,
+                opacity: 0.45
+            });
+            const particles = new THREE.Points(pGeo, pMat);
+            scene.add(particles);
+            return particles;
+        }
+
+        buildPedestal();
+        buildPluto();
+        buildProserpina();
+        buildCerberusAndDrapery();
+        buildSpiralDiagram();
+        const dustParticles = buildMuseumAtmosphere();
+
+        // ============================================================================
+        // 4. 巴洛克戲劇燈光系統 (Lighting Studio)
+        // ============================================================================
+        const ambientLight = new THREE.AmbientLight(0xfff4e0, 0.42);
+        scene.add(ambientLight);
+
+        const hemiLight = new THREE.HemisphereLight(0xfff6e5, 0x1d1822, 0.45);
+        scene.add(hemiLight);
+
+        // 主戲劇聚光燈 (可透過滑桿調整方位角與仰角)
+        const keySpotLight = new THREE.SpotLight(0xfff1d6, 1.8);
+        keySpotLight.angle = Math.PI / 3.2;
+        keySpotLight.penumbra = 0.65;
+        keySpotLight.decay = 1.5;
+        keySpotLight.distance = 22;
+        keySpotLight.castShadow = true;
+        keySpotLight.shadow.mapSize.width = 2048;
+        keySpotLight.shadow.mapSize.height = 2048;
+        keySpotLight.shadow.bias = -0.0005;
+        scene.add(keySpotLight);
+
+        // 邊緣輪廓光 (Rim Light) 凸顯大理石次表面通透感
+        const rimLight = new THREE.DirectionalLight(0xdbeafe, 0.75);
+        rimLight.position.set(-3.5, 3.2, -3.5);
+        scene.add(rimLight);
+
+        // 底座與冥界暖金補光 (Underworld / Warm Up-light)
+        const bottomFillLight = new THREE.PointLight(0xd97706, 0.45, 8);
+        bottomFillLight.position.set(1.2, -1.2, 1.8);
+        scene.add(bottomFillLight);
+
+        // 根據滑桿計算主光源位置
+        let lightAzimuth = 42;
+        let lightElevation = 55;
+        function updateKeyLightPosition() {
+            const r = 6.2;
+            const phi = THREE.MathUtils.degToRad(90 - lightElevation);
+            const theta = THREE.MathUtils.degToRad(lightAzimuth);
+            keySpotLight.position.x = r * Math.sin(phi) * Math.sin(theta);
+            keySpotLight.position.y = r * Math.cos(phi) + 0.8;
+            keySpotLight.position.z = r * Math.sin(phi) * Math.cos(theta);
+        }
+        updateKeyLightPosition();
+
+        // 切換三種館藏光影模式
+        function applyLightingPreset(mode) {
+            if (mode === 'borghese') {
+                ambientLight.color.setHex(0xfff4e0);
+                ambientLight.intensity = 0.46;
+                hemiLight.intensity = 0.48;
+                keySpotLight.color.setHex(0xfff1d6);
+                keySpotLight.intensity = 1.8;
+                rimLight.color.setHex(0xfef3c7);
+                rimLight.intensity = 0.65;
+                bottomFillLight.color.setHex(0xd4af37);
+                bottomFillLight.intensity = 0.35;
+                document.getElementById('light-intensity').value = 18;
+                document.getElementById('intensity-val').textContent = '1.8x';
+            } else if (mode === 'chiaroscuro') {
+                // 卡拉瓦喬強烈明暗對照法：壓低環境光、強化單側聚光
+                ambientLight.color.setHex(0x1a1612);
+                ambientLight.intensity = 0.12;
+                hemiLight.intensity = 0.12;
+                keySpotLight.color.setHex(0xffdfaa);
+                keySpotLight.intensity = 2.85;
+                rimLight.color.setHex(0x94a3b8);
+                rimLight.intensity = 0.35;
+                bottomFillLight.intensity = 0.15;
+                document.getElementById('light-intensity').value = 28;
+                document.getElementById('intensity-val').textContent = '2.8x';
+            } else if (mode === 'underworld') {
+                // 冥界神話雙色背光：幽藍與熔岩火光
+                ambientLight.color.setHex(0x1e293b);
+                ambientLight.intensity = 0.25;
+                hemiLight.intensity = 0.25;
+                keySpotLight.color.setHex(0x93c5fd);
+                keySpotLight.intensity = 2.1;
+                rimLight.color.setHex(0x38bdf8);
+                rimLight.intensity = 1.35;
+                bottomFillLight.color.setHex(0xf97316);
+                bottomFillLight.intensity = 1.65;
+                document.getElementById('light-intensity').value = 21;
+                document.getElementById('intensity-val').textContent = '2.1x';
+            }
+        }
+
+        // ============================================================================
+        // 5. 5 大互動導覽熱點 DOM 生成、3D 投影與平滑鏡頭過渡 (Camera Fly-to)
+        // ============================================================================
+        const hotspotsLayer = document.getElementById('hotspots-layer');
+        const hotspotTabsContainer = document.getElementById('hotspot-tabs');
+        const hotspotElements = [];
+        let activeHotspotId = 1;
+        let hotspotsVisible = true;
+
+        // 鏡頭平滑飛行狀態
+        let camAnim = {
+            active: false,
+            startTime: 0,
+            duration: 1100,
+            startPos: new THREE.Vector3(),
+            endPos: new THREE.Vector3(),
+            startTarget: new THREE.Vector3(),
+            endTarget: new THREE.Vector3()
+        };
+
+        function flyToCamera(targetPos, lookAtTarget) {
+            camAnim.active = true;
+            camAnim.startTime = performance.now();
+            camAnim.startPos.copy(camera.position);
+            camAnim.endPos.copy(targetPos);
+            camAnim.startTarget.copy(controls.target);
+            camAnim.endTarget.copy(lookAtTarget);
+        }
+
+        // 當使用者手動拖曳畫面時，中斷自動飛行避免搶奪鏡頭控制權
+        controls.addEventListener('start', () => {
+            camAnim.active = false;
+        });
+
+        function selectHotspot(id, fly = true) {
+            activeHotspotId = id;
+            const data = HOTSPOTS_DATA.find(h => h.id === id);
+            if (!data) return;
+
+            // 更新左側詳情面板文字
+            document.getElementById('current-hotspot-index').textContent = `${data.id} / ${HOTSPOTS_DATA.length}`;
+            document.getElementById('detail-badge').textContent = data.id;
+            document.getElementById('detail-subtitle').textContent = data.subtitle;
+            document.getElementById('detail-title').textContent = data.title;
+            document.getElementById('detail-desc').textContent = data.desc;
+            document.getElementById('detail-quote').textContent = data.quote;
+            document.getElementById('detail-metric-label').textContent = data.metricLabel;
+            document.getElementById('detail-metric-bar').style.width = `${data.metricValue}%`;
+
+            // 更新 3D 標記與左側編號頁籤樣式
+            hotspotElements.forEach(item => {
+                item.marker.classList.toggle('active', item.data.id === id);
+                item.tab.className = item.data.id === id
+                    ? 'py-1.5 rounded-lg font-cinzel font-bold text-xs bg-museum-gold text-black shadow transition'
+                    : 'py-1.5 rounded-lg font-cinzel font-semibold text-xs bg-white/5 hover:bg-white/15 text-museum-goldLight border border-white/10 transition';
+            });
+
+            if (fly) {
+                // 特寫時暫停自動旋轉以便細看
+                controls.autoRotate = false;
+                updateAutoRotateUI();
+                flyToCamera(data.camPos, data.camTarget);
+            }
+        }
+
+        // 初始化建立 5 個熱點標記與索引按鈕
+        HOTSPOTS_DATA.forEach(data => {
+            // 3D 浮動標記
+            const marker = document.createElement('div');
+            marker.className = `hotspot-marker ${data.id === 1 ? 'active' : ''}`;
+            marker.innerHTML = `<span>${data.id}</span><div class="hotspot-tooltip">${data.shortTitle}</div>`;
+            marker.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectHotspot(data.id, true);
+            });
+            hotspotsLayer.appendChild(marker);
+
+            // 左側面板頁籤按鈕
+            const tab = document.createElement('button');
+            tab.textContent = data.id;
+            tab.addEventListener('click', () => selectHotspot(data.id, true));
+            hotspotTabsContainer.appendChild(tab);
+
+            hotspotElements.push({ data, marker, tab });
+        });
+        selectHotspot(1, false);
+
+        // ============================================================================
+        // 6. UI 互動事件綁定
+        // ============================================================================
+        // 上一焦點 / 下一焦點
+        document.getElementById('prev-hotspot-btn').addEventListener('click', () => {
+            const prevId = activeHotspotId <= 1 ? HOTSPOTS_DATA.length : activeHotspotId - 1;
+            selectHotspot(prevId, true);
+        });
+        document.getElementById('next-hotspot-btn').addEventListener('click', () => {
+            const nextId = activeHotspotId >= HOTSPOTS_DATA.length ? 1 : activeHotspotId + 1;
+            selectHotspot(nextId, true);
+        });
+
+        // 光影模式按鈕
+        document.querySelectorAll('.light-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.light-mode-btn').forEach(b => {
+                    b.classList.remove('border-museum-gold', 'bg-museum-gold/20');
+                    b.classList.add('border-white/10', 'bg-white/5');
+                });
+                btn.classList.remove('border-white/10', 'bg-white/5');
+                btn.classList.add('border-museum-gold', 'bg-museum-gold/20');
+                applyLightingPreset(btn.dataset.light);
+            });
+        });
+
+        // 光源角度與強度滑桿
+        document.getElementById('light-azimuth').addEventListener('input', (e) => {
+            lightAzimuth = parseFloat(e.target.value);
+            document.getElementById('azimuth-val').textContent = `${lightAzimuth}°`;
+            updateKeyLightPosition();
+        });
+        document.getElementById('light-elevation').addEventListener('input', (e) => {
+            lightElevation = parseFloat(e.target.value);
+            document.getElementById('elevation-val').textContent = `${lightElevation}°`;
+            updateKeyLightPosition();
+        });
+        document.getElementById('light-intensity').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) / 10;
+            keySpotLight.intensity = val;
+            document.getElementById('intensity-val').textContent = `${val.toFixed(1)}x`;
+        });
+
+        // 材質檢視切換
+        document.querySelectorAll('.mat-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mat-btn').forEach(b => {
+                    b.className = 'mat-btn px-2.5 py-2 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-museum-marble/80 transition';
+                });
+                btn.className = 'mat-btn px-2.5 py-2 rounded-lg border border-museum-gold bg-museum-gold/20 text-white font-medium transition';
+
+                const mode = btn.dataset.mat;
+                sculptureMeshes.forEach(({ mesh, defaultMat }) => {
+                    if (mode === 'marble') mesh.material = defaultMat;
+                    else if (mode === 'bronze') mesh.material = materials.bronze;
+                    else if (mode === 'normal') mesh.material = materials.normal;
+                    else if (mode === 'wireframe') mesh.material = materials.wireframe;
+                });
+            });
+        });
+
+        // 底部快速視角預設
+        const CAMERA_PRESETS = {
+            front: { pos: new THREE.Vector3(0.2, 1.15, 5.6), target: new THREE.Vector3(0, 0.75, 0) },
+            hero: { pos: new THREE.Vector3(-0.95, -0.55, 3.85), target: new THREE.Vector3(0.05, 1.35, 0.1) },
+            thigh: { pos: HOTSPOTS_DATA[0].camPos, target: HOTSPOTS_DATA[0].camTarget, hotspot: 1 },
+            tear: { pos: HOTSPOTS_DATA[1].camPos, target: HOTSPOTS_DATA[1].camTarget, hotspot: 2 },
+            cerberus: { pos: HOTSPOTS_DATA[3].camPos, target: HOTSPOTS_DATA[3].camTarget, hotspot: 4 }
+        };
+
+        document.querySelectorAll('.cam-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.cam-btn').forEach(b => {
+                    b.className = 'cam-btn px-3 py-1.5 rounded-xl text-xs font-serif bg-white/5 hover:bg-white/15 text-museum-marble transition shrink-0';
+                });
+                btn.className = 'cam-btn px-3 py-1.5 rounded-xl text-xs font-serif bg-museum-gold text-black font-semibold transition shrink-0';
+
+                const preset = CAMERA_PRESETS[btn.dataset.cam];
+                if (preset) {
+                    if (preset.hotspot) selectHotspot(preset.hotspot, true);
+                    else flyToCamera(preset.pos, preset.target);
+                }
+            });
+        });
+
+        // 自動環繞展示開關
+        function updateAutoRotateUI() {
+            const label = document.getElementById('auto-rotate-label');
+            label.textContent = controls.autoRotate ? '環繞展示：開' : '環繞展示：關';
+        }
+        document.getElementById('auto-rotate-btn').addEventListener('click', () => {
+            controls.autoRotate = !controls.autoRotate;
+            updateAutoRotateUI();
+        });
+
+        // 頂部導覽標記顯示/隱藏
+        document.getElementById('toggle-hotspots-btn').addEventListener('click', (e) => {
+            hotspotsVisible = !hotspotsVisible;
+            hotspotsLayer.style.display = hotspotsVisible ? 'block' : 'none';
+            e.currentTarget.querySelector('span:last-child').textContent = hotspotsVisible ? '導覽標記：顯示' : '導覽標記：隱藏';
+        });
+
+        // 螺旋張力線顯示/隱藏
+        document.getElementById('toggle-diagram-btn').addEventListener('click', (e) => {
+            diagramGroup.visible = !diagramGroup.visible;
+            e.currentTarget.classList.toggle('border-museum-gold', diagramGroup.visible);
+        });
+
+        // 沉浸檢視 (收合左右面板)
+        let uiCollapsed = false;
+        document.getElementById('toggle-ui-btn').addEventListener('click', (e) => {
+            uiCollapsed = !uiCollapsed;
+            const leftPanel = document.getElementById('left-panel');
+            const rightPanel = document.getElementById('right-panel');
+            leftPanel.style.opacity = uiCollapsed ? '0' : '1';
+            leftPanel.style.pointerEvents = uiCollapsed ? 'none' : 'none';
+            leftPanel.querySelectorAll('.museum-panel').forEach(p => p.style.pointerEvents = uiCollapsed ? 'none' : 'auto');
+            rightPanel.style.opacity = uiCollapsed ? '0' : '1';
+            rightPanel.querySelectorAll('.museum-panel').forEach(p => p.style.pointerEvents = uiCollapsed ? 'none' : 'auto');
+            e.currentTarget.textContent = uiCollapsed ? '展開資訊面板' : '沉浸檢視';
+        });
+
+        // 視窗尺寸自適應
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ============================================================================
+        // 7. 動畫主迴圈 (Render Loop & 3D Hotspot Projection)
+        // ============================================================================
+        const projVec = new THREE.Vector3();
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+
+            // 平滑相機飛行插值 (Cubic Ease-In-Out)
+            if (camAnim.active) {
+                const elapsed = now - camAnim.startTime;
+                const t = Math.min(elapsed / camAnim.duration, 1.0);
+                const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+                camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, ease);
+                controls.target.lerpVectors(camAnim.startTarget, camAnim.endTarget, ease);
+
+                if (t >= 1.0) camAnim.active = false;
+            }
+
+            controls.update();
+
+            // 微塵緩慢漂浮
+            if (dustParticles) {
+                dustParticles.rotation.y = now * 0.00005;
+            }
+
+            // 同步 3D 熱點座標至 2D 螢幕空間
+            if (hotspotsVisible) {
+                const halfW = window.innerWidth / 2;
+                const halfH = window.innerHeight / 2;
+
+                hotspotElements.forEach(({ data, marker }) => {
+                    projVec.copy(data.position);
+                    projVec.project(camera);
+
+                    // 檢查是否在相機前方
+                    if (projVec.z < 1.0) {
+                        const x = (projVec.x * halfW) + halfW;
+                        const y = -(projVec.y * halfH) + halfH;
+                        marker.style.transform = `translate3d(${x}px, ${y}px, 0) ${data.id === activeHotspotId ? 'scale(1.22)' : 'scale(1)'}`;
+                        marker.style.display = 'flex';
+                    } else {
+                        marker.style.display = 'none';
+                    }
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            animate(performance.now());
+        };
+    </script>
+</body>
+</html>
